@@ -1,14 +1,11 @@
-#:schema node_modules/wrangler/config-schema.json
 name = "cloud-cost-analyzer"
-main = ".open-next/worker.js"
-compatibility_date = "2024-09-23"
-compatibility_flags = ["nodejs_compat"]
+compatibility_date = "2023-12-01"
 
-[assets]
-directory = ".open-next/assets"
-binding = "ASSETS"
+[build]
+command = "npm run build"
 
-# [[d1_databases]]
-# binding = "DB"
-# database_name = "random_id"
-# database_id = "10183848-4cc7-4198-b8c7-1374015ab09c"
+[site]
+bucket = ".next/static"
+
+[env.production]
+pages_build_output_dir = ".vercel/output/static"
