@@ -1,8 +1,10 @@
 /**
- * Biblioteca para análise de dados de custos em nuvem
+ * Atualiza a função de análise de custos para incluir detecção de anomalias
  */
 
 import { CloudCostData, ServiceCost } from '@/lib/csv/parser';
+import { CostAnomaly, detectCostAnomalies } from './anomalyDetection';
+import { comparePeriods, PeriodComparisonResult } from './periodComparison';
 
 export interface CostTrend {
   month: string;
@@ -42,6 +44,8 @@ export interface CostAnalysis {
     }[];
   };
   insights: string[];
+  anomalies: CostAnomaly[];
+  periodComparison: PeriodComparisonResult;
 }
 
 /**
@@ -65,8 +69,14 @@ export function analyzeCloudCosts(data: CloudCostData): CostAnalysis {
   // Calcular distribuição de custos por serviço
   const costBreakdown = calculateCostBreakdown(services, months);
   
+  // Detectar anomalias nos dados
+  const anomalies = detectCostAnomalies(data);
+  
+  // Comparação avançada entre períodos
+  const periodComparison = comparePeriods(data);
+  
   // Gerar insights baseados nos dados
-  const insights = generateInsights(trends, topServices, monthlyComparison, costBreakdown);
+  const insights = generateInsights(trends, topServices, monthlyComparison, costBreakdown, anomalies);
   
   return {
     totalCost,
@@ -74,7 +84,9 @@ export function analyzeCloudCosts(data: CloudCostData): CostAnalysis {
     topServices,
     monthlyComparison,
     costBreakdown,
-    insights
+    insights,
+    anomalies,
+    periodComparison
   };
 }
 
@@ -210,7 +222,8 @@ function generateInsights(
   trends: CostTrend[],
   topServices: ServiceAnalysis[],
   comparison: CostComparison,
-  costBreakdown: { services: { name: string; cost: number; percentage: number }[] }
+  costBreakdown: { services: { name: string; cost: number; percentage: number }[] },
+  anomalies: CostAnomaly[]
 ): string[] {
   const insights: string[] = [];
   
@@ -260,6 +273,22 @@ function generateInsights(
   
   if (topThreePercentage > 70) {
     insights.push(`Os três principais serviços (${topThreeServices.map(s => s.name).join(', ')}) representam ${topThreePercentage.toFixed(1)}% dos seus custos. Sua infraestrutura está concentrada em poucos serviços.`);
+  }
+  
+  // Insights sobre anomalias detectadas
+  if (anomalies.length > 0) {
+    const highSeverityAnomalies = anomalies.filter(a => a.severity === 'high');
+    
+    if (highSeverityAnomalies.length > 0) {
+      insights.push(`Detectamos ${highSeverityAnomalies.length} anomalias de alta severidade nos custos. Recomendamos verificar imediatamente os serviços afetados.`);
+    }
+    
+    // Destacar a anomalia mais significativa
+    const mostSignificantAnomaly = anomalies.sort((a, b) => Math.abs(b.percentDeviation) - Math.abs(a.percentDeviation))[0];
+    if (mostSignificantAnomaly) {
+      const direction = mostSignificantAnomaly.percentDeviation > 0 ? 'aumento' : 'redução';
+      insights.push(`A anomalia mais significativa foi um ${direction} de ${Math.abs(mostSignificantAnomaly.percentDeviation).toFixed(1)}% em ${mostSignificantAnomaly.service} durante ${mostSignificantAnomaly.month}.`);
+    }
   }
   
   // Adicionar recomendação geral
