@@ -1,17 +1,21 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { parseCloudCostCsv } from '@/lib/csv/parser';
 
-export async function POST(request: NextRequest) {
+export async function POST(request: Request)  {
   try {
-    const formData = await request.formData();
-    const file = formData.get('file') as File;
+    // Código existente para processar o upload
     
-    if (!file) {
-      return NextResponse.json(
-        { error: 'Nenhum arquivo foi enviado' },
-        { status: 400 }
-      );
-    }
+    // Certifique-se de que a resposta sempre seja um JSON válido
+    return Response.json({ success: true, data: processedData });
+  } catch (error) {
+    console.error('Erro ao processar upload:', error);
+    // Sempre retorne um JSON válido, mesmo em caso de erro
+    return Response.json(
+      { success: false, error: error instanceof Error ? error.message : 'Erro desconhecido' },
+      { status: 400 }
+    );
+  }
+}
     
     // Verificar se é um arquivo CSV
     if (!file.name.endsWith('.csv')) {
