@@ -1,10 +1,13 @@
+interface AnalyzeRequest {
+  cloudCostData: any; // ou defina um tipo mais específico se souber a estrutura exata
+}
 import { CloudCostData } from '@/lib/csv/parser';
 import { CostAnalysis, analyzeCloudCosts } from '@/lib/analysis/costAnalysis';
 
 export async function POST(request: Request) {
   try {
-    const data = await request.json();
-    
+    const data = await request.json()  as AnalyzeRequest;
+  
     if (!data || !data.cloudCostData) {
       return Response.json(
         { error: 'Dados de custos em nuvem não fornecidos' },
