@@ -48,10 +48,20 @@ export default function FileUploader({ onDataUploaded }: FileUploaderProps) {
         body: formData,
       });
 
-      const result = await response.json();
+      let result;
+      try {
+        result = await response.json();
+      } catch (jsonError) {
+        console.error('Erro ao processar resposta JSON:', jsonError);
+        throw new Error('Erro ao processar resposta do servidor. Tente novamente.');
+      }
 
       if (!response.ok) {
         throw new Error(result.error || 'Erro ao fazer upload do arquivo');
+      }
+      
+      if (!result.success || !result.data) {
+        throw new Error(result.error || 'Dados inválidos retornados pelo servidor');
       }
 
       setData(result.data);
