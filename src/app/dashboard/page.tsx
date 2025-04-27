@@ -1,7 +1,3 @@
-interface AnalysisResponse {
-  error?: string;
-  analysis: any; // ou defina um tipo mais específico se souber a estrutura exata
-}
 'use client';
 
 import { useState } from 'react';
@@ -30,10 +26,20 @@ export default function Dashboard() {
         body: JSON.stringify({ cloudCostData: data }),
       });
       
-      const result = await response.json() as AnalysisResponse; // Adicionada a tipagem aqui
+      let result;
+      try {
+        result = await response.json();
+      } catch (jsonError) {
+        console.error('Erro ao processar resposta JSON:', jsonError);
+        throw new Error('Erro ao processar resposta do servidor. Tente novamente.');
+      }
       
       if (!response.ok) {
         throw new Error(result.error || 'Erro ao analisar os dados');
+      }
+      
+      if (!result.success || !result.analysis) {
+        throw new Error(result.error || 'Dados de análise inválidos retornados pelo servidor');
       }
       
       setAnalysis(result.analysis);
@@ -101,7 +107,7 @@ export default function Dashboard() {
                   Faça upload de um arquivo CSV de custos em nuvem para visualizar análises detalhadas.
                 </p>
               </div>
-            ) }
+            )}
           </div>
         </div>
       </div>
