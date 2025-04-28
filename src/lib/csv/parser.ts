@@ -24,119 +24,209 @@ export interface ServiceCost {
  * Processa o conteúdo CSV de custos em nuvem
  */
 export async function parseCloudCostCsv(csvContent: string): Promise<CloudCostData> {
-  // Dividir o conteúdo em linhas
-  const lines = csvContent.split('\n').filter(line => line.trim() !== '');
-  
-  // Extrair cabeçalhos
-  const headers = lines[0].split(',').map(header => header.replace(/"/g, '').trim());
-  
-  // Identificar colunas de meses (formato: "Custo: Mês/Ano" ou "Uso: Mês/Ano")
-  const monthColumns: string[] = [];
-  const monthIndices: Record<string, number> = {};
-  
-  headers.forEach((header, index) => {
-    if (header.startsWith('Custo:')) {
-      const month = header.replace('Custo:', '').trim();
-      if (!monthColumns.includes(month)) {
-        monthColumns.push(month);
-      }
-      monthIndices[`custo_${month}`] = index;
-    } else if (header.startsWith('Uso:')) {
-      const month = header.replace('Uso:', '').trim();
-      monthIndices[`uso_${month}`] = index;
-    }
-  });
-  
-  // Ordenar meses cronologicamente
-  monthColumns.sort((a, b) => {
-    const [monthA, yearA] = a.split('/').reverse();
-    const [monthB, yearB] = b.split('/').reverse();
+  try {
+    // Dividir o conteúdo em linhas
+    const lines = csvContent.split('\n').filter(line => line.trim() !== '');
     
-    if (yearA !== yearB) {
-      return parseInt(yearA) - parseInt(yearB);
+    if (lines.length < 2) {
+      throw new Error('O arquivo CSV deve conter pelo menos um cabeçalho e uma linha de dados');
     }
     
-    const monthMap: Record<string, number> = {
-      'Janeiro': 1, 'Fevereiro': 2, 'Março': 3, 'Abril': 4,
-      'Maio': 5, 'Junho': 6, 'Julho': 7, 'Agosto': 8,
-      'Setembro': 9, 'Outubro': 10, 'Novembro': 11, 'Dezembro': 12
-    };
+    // Extrair cabeçalhos
+    const headers = lines[0].split(',').map(header => header.replace(/"/g, '').trim());
     
-    return monthMap[monthA.split('/')[0]] - monthMap[monthB.split('/')[0]];
-  });
-  
-  // Processar linhas de dados
-  const services: ServiceCost[] = [];
-  const serviceMap: Record<string, ServiceCost> = {};
-  const totalsByMonth: Record<string, number> = {};
-  
-  for (let i = 1; i < lines.length; i++) {
-    const columns = parseCSVLine(lines[i]);
+    // Identificar colunas de meses (formato: "Custo: Mês/Ano" ou "Uso: Mês/Ano" ou "Estimativa: Mês/Ano")
+    const monthColumns: string[] = [];
+    const monthIndices: Record<string, number> = {};
     
-    if (columns.length < 3) continue;
-    
-    const serviceName = columns[1].replace(/"/g, '').trim();
-    const subServiceName = columns[2].replace(/"/g, '').trim();
-    
-    if (serviceName === '') continue;
-    
-    // Criar objeto de serviço se não existir
-    if (!serviceMap[serviceName]) {
-      const newService: ServiceCost = {
-        name: serviceName,
-        subServices: [],
-        costs: {}
-      };
-      
-      services.push(newService);
-      serviceMap[serviceName] = newService;
-    }
-    
-    // Processar custos e usos para cada mês
-    const costs: Record<string, number> = {};
-    const usages: Record<string, string> = {};
-    
-    monthColumns.forEach(month => {
-      const costIndex = monthIndices[`custo_${month}`];
-      const usageIndex = monthIndices[`uso_${month}`];
-      
-      if (costIndex !== undefined && columns[costIndex]) {
-        const costValue = parseFloat(columns[costIndex].replace(/"/g, '').replace(',', '.')) || 0;
-        costs[month] = costValue;
-        
-        // Atualizar totais por mês
-        totalsByMonth[month] = (totalsByMonth[month] || 0) + costValue;
-      }
-      
-      if (usageIndex !== undefined && columns[usageIndex]) {
-        usages[month] = columns[usageIndex].replace(/"/g, '').trim();
+    headers.forEach((header, index) => {
+      if (header.startsWith('Custo:')) {
+        const month = header.replace('Custo:', '').trim();
+        if (!monthColumns.includes(month)) {
+          monthColumns.push(month);
+        }
+        monthIndices[`custo_${month}`] = index;
+      } else if (header.startsWith('Uso:')) {
+        const month = header.replace('Uso:', '').trim();
+        monthIndices[`uso_${month}`] = index;
+      } else if (header.startsWith('Estimativa:')) {
+        // Ignorar colunas de estimativa, mas registrar para debug
+        console.log(`Ignorando coluna de estimativa: ${header}`);
       }
     });
     
-    // Se for um subserviço, adicionar ao serviço principal
-    if (subServiceName !== '') {
-      const subService: ServiceCost = {
-        name: subServiceName,
-        costs,
-        usages
+    if (monthColumns.length === 0) {
+      throw new Error('Nenhuma coluna de custo encontrada no arquivo CSV. Os cabeçalhos devem começar com "Custo:"');
+    }
+    
+    // Normalizar nomes de meses para ordenação correta
+    const normalizeMonth = (month: string): string => {
+      // Corrigir abreviações e acentuação
+      return month
+        .replace('Marco', 'Março')
+        .replace('Fev', 'Fevereiro')
+        .replace('Jan', 'Janeiro')
+        .replace('Abr', 'Abril')
+        .replace('Mai', 'Maio')
+        .replace('Jun', 'Junho')
+        .replace('Jul', 'Julho')
+        .replace('Ago', 'Agosto')
+        .replace('Set', 'Setembro')
+        .replace('Out', 'Outubro')
+        .replace('Nov', 'Novembro')
+        .replace('Dez', 'Dezembro');
+    };
+    
+    // Ordenar meses cronologicamente
+    monthColumns.sort((a, b) => {
+      // Extrair mês e ano
+      const partsA = a.split('/');
+      const partsB = b.split('/');
+      
+      if (partsA.length !== 2 || partsB.length !== 2) {
+        // Se o formato não for Mês/Ano, manter a ordem original
+        return 0;
+      }
+      
+      const monthA = normalizeMonth(partsA[0]);
+      const yearA = partsA[1];
+      const monthB = normalizeMonth(partsB[0]);
+      const yearB = partsB[1];
+      
+      if (yearA !== yearB) {
+        return parseInt(yearA) - parseInt(yearB);
+      }
+      
+      const monthMap: Record<string, number> = {
+        'Janeiro': 1, 'Fevereiro': 2, 'Março': 3, 'Abril': 4,
+        'Maio': 5, 'Junho': 6, 'Julho': 7, 'Agosto': 8,
+        'Setembro': 9, 'Outubro': 10, 'Novembro': 11, 'Dezembro': 12
       };
       
-      serviceMap[serviceName].subServices?.push(subService);
-    } else {
-      // Atualizar custos do serviço principal
-      Object.keys(costs).forEach(month => {
-        serviceMap[serviceName].costs[month] = costs[month];
+      return (monthMap[monthA] || 0) - (monthMap[monthB] || 0);
+    });
+    
+    // Processar linhas de dados
+    const services: ServiceCost[] = [];
+    const serviceMap: Record<string, ServiceCost> = {};
+    const totalsByMonth: Record<string, number> = {};
+    
+    // Inicializar totalsByMonth com zeros para todos os meses
+    monthColumns.forEach(month => {
+      totalsByMonth[month] = 0;
+    });
+    
+    for (let i = 1; i < lines.length; i++) {
+      const columns = parseCSVLine(lines[i]);
+      
+      // Verificar se a linha tem colunas suficientes
+      if (columns.length < 3) {
+        console.log(`Ignorando linha ${i+1}: número insuficiente de colunas`);
+        continue;
+      }
+      
+      // Extrair nome do serviço e subserviço
+      let serviceName = '';
+      let subServiceName = '';
+      
+      // Tentar diferentes índices para encontrar o nome do serviço
+      if (columns[1] && columns[1].replace(/"/g, '').trim() !== '') {
+        serviceName = columns[1].replace(/"/g, '').trim();
+      } else if (columns[0] && columns[0].replace(/"/g, '').trim() !== '') {
+        serviceName = columns[0].replace(/"/g, '').trim();
+      }
+      
+      // Se não encontrou nome de serviço, pular linha
+      if (serviceName === '') {
+        console.log(`Ignorando linha ${i+1}: nome de serviço não encontrado`);
+        continue;
+      }
+      
+      // Tentar encontrar nome do subserviço
+      if (columns[2]) {
+        subServiceName = columns[2].replace(/"/g, '').trim();
+      }
+      
+      // Criar objeto de serviço se não existir
+      if (!serviceMap[serviceName]) {
+        const newService: ServiceCost = {
+          name: serviceName,
+          subServices: [],
+          costs: {}
+        };
+        
+        services.push(newService);
+        serviceMap[serviceName] = newService;
+      }
+      
+      // Processar custos e usos para cada mês
+      const costs: Record<string, number> = {};
+      const usages: Record<string, string> = {};
+      
+      monthColumns.forEach(month => {
+        const costIndex = monthIndices[`custo_${month}`];
+        const usageIndex = monthIndices[`uso_${month}`];
+        
+        if (costIndex !== undefined && columns[costIndex]) {
+          // Limpar o valor e converter para número
+          let costValue = columns[costIndex].replace(/"/g, '').trim();
+          
+          // Substituir vírgula por ponto para conversão correta
+          costValue = costValue.replace(',', '.');
+          
+          // Converter para número, com fallback para zero
+          const numericCost = parseFloat(costValue) || 0;
+          costs[month] = numericCost;
+          
+          // Atualizar totais por mês
+          totalsByMonth[month] += numericCost;
+        } else {
+          // Se não houver custo para este mês, definir como zero
+          costs[month] = 0;
+        }
+        
+        if (usageIndex !== undefined && columns[usageIndex]) {
+          usages[month] = columns[usageIndex].replace(/"/g, '').trim();
+        }
       });
       
-      serviceMap[serviceName].usages = usages;
+      // Se for um subserviço, adicionar ao serviço principal
+      if (subServiceName !== '') {
+        const subService: ServiceCost = {
+          name: subServiceName,
+          costs,
+          usages
+        };
+        
+        serviceMap[serviceName].subServices?.push(subService);
+      } else {
+        // Atualizar custos do serviço principal
+        Object.keys(costs).forEach(month => {
+          serviceMap[serviceName].costs[month] = costs[month];
+        });
+        
+        serviceMap[serviceName].usages = usages;
+      }
     }
+    
+    // Verificar se temos dados válidos
+    if (services.length === 0) {
+      throw new Error('Nenhum serviço encontrado no arquivo CSV');
+    }
+    
+    if (Object.keys(totalsByMonth).length === 0) {
+      throw new Error('Nenhum custo encontrado no arquivo CSV');
+    }
+    
+    return {
+      services,
+      months: monthColumns,
+      totalsByMonth
+    };
+  } catch (error) {
+    console.error('Erro ao processar arquivo CSV:', error);
+    throw new Error(`Erro ao processar arquivo CSV: ${error instanceof Error ? error.message : 'Formato inválido'}`);
   }
-  
-  return {
-    services,
-    months: monthColumns,
-    totalsByMonth
-  };
 }
 
 /**
