@@ -358,7 +358,7 @@ export default function AnalysisResults({ cloudCostData, analysis }: AnalysisRes
                       </div>
                       <div className="mt-2 md:mt-0">
                         <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-blue-100 text-blue-800">
-                          R$ {service.cost.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          R$ {service.totalCost.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                         </span>
                       </div>
                     </div>
