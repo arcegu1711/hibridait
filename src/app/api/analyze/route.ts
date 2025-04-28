@@ -19,6 +19,16 @@ export async function POST(request: NextRequest) {
     
     // Validar a estrutura dos dados
     if (!data || !data.services || !data.months || !data.totalsByMonth) {
+      console.error('Estrutura de dados inválida:', {
+        hasData: !!data,
+        hasServices: data ? !!data.services : false,
+        servicesLength: data && data.services ? data.services.length : 0,
+        hasMonths: data ? !!data.months : false,
+        monthsLength: data && data.months ? data.months.length : 0,
+        hasTotalsByMonth: data ? !!data.totalsByMonth : false,
+        totalsByMonthKeys: data && data.totalsByMonth ? Object.keys(data.totalsByMonth).length : 0
+      });
+      
       return NextResponse.json(
         { error: 'Estrutura de dados inválida. Verifique os campos obrigatórios.' },
         { status: 400 }
@@ -27,6 +37,11 @@ export async function POST(request: NextRequest) {
     
     // Verificar se há dados suficientes para análise
     if (data.services.length === 0 || data.months.length === 0) {
+      console.error('Dados insuficientes para análise:', {
+        servicesLength: data.services.length,
+        monthsLength: data.months.length
+      });
+      
       return NextResponse.json(
         { error: 'Dados insuficientes para análise. Verifique o arquivo CSV.' },
         { status: 400 }
