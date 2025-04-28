@@ -25,6 +25,8 @@ export interface ServiceCost {
  */
 export async function parseCloudCostCsv(csvContent: string): Promise<CloudCostData> {
   try {
+    console.log("Iniciando processamento do CSV...");
+    
     // Dividir o conteúdo em linhas
     const lines = csvContent.split('\n').filter(line => line.trim() !== '');
     
@@ -32,28 +34,36 @@ export async function parseCloudCostCsv(csvContent: string): Promise<CloudCostDa
       throw new Error('O arquivo CSV deve conter pelo menos um cabeçalho e uma linha de dados');
     }
     
+    console.log(`Número de linhas no CSV: ${lines.length}`);
+    
     // Extrair cabeçalhos
-    const headers = lines[0].split(',').map(header => header.replace(/"/g, '').trim());
+    const headers = parseCSVLine(lines[0]);
+    console.log(`Cabeçalhos encontrados: ${headers.length}`);
     
     // Identificar colunas de meses (formato: "Custo: Mês/Ano" ou "Uso: Mês/Ano" ou "Estimativa: Mês/Ano")
     const monthColumns: string[] = [];
     const monthIndices: Record<string, number> = {};
     
     headers.forEach((header, index) => {
-      if (header.startsWith('Custo:')) {
-        const month = header.replace('Custo:', '').trim();
+      const cleanHeader = header.replace(/"/g, '').trim();
+      
+      if (cleanHeader.startsWith('Custo:')) {
+        const month = cleanHeader.replace('Custo:', '').trim();
         if (!monthColumns.includes(month)) {
           monthColumns.push(month);
         }
         monthIndices[`custo_${month}`] = index;
-      } else if (header.startsWith('Uso:')) {
-        const month = header.replace('Uso:', '').trim();
+      } else if (cleanHeader.startsWith('Uso:')) {
+        const month = cleanHeader.replace('Uso:', '').trim();
         monthIndices[`uso_${month}`] = index;
-      } else if (header.startsWith('Estimativa:')) {
+      } else if (cleanHeader.startsWith('Estimativa:')) {
         // Ignorar colunas de estimativa, mas registrar para debug
-        console.log(`Ignorando coluna de estimativa: ${header}`);
+        console.log(`Ignorando coluna de estimativa: ${cleanHeader}`);
       }
     });
+    
+    console.log(`Meses encontrados: ${monthColumns.length}`);
+    console.log(`Meses: ${monthColumns.join(', ')}`);
     
     if (monthColumns.length === 0) {
       throw new Error('Nenhuma coluna de custo encontrada no arquivo CSV. Os cabeçalhos devem começar com "Custo:"');
@@ -63,18 +73,18 @@ export async function parseCloudCostCsv(csvContent: string): Promise<CloudCostDa
     const normalizeMonth = (month: string): string => {
       // Corrigir abreviações e acentuação
       return month
-        .replace('Marco', 'Março')
-        .replace('Fev', 'Fevereiro')
-        .replace('Jan', 'Janeiro')
-        .replace('Abr', 'Abril')
-        .replace('Mai', 'Maio')
-        .replace('Jun', 'Junho')
-        .replace('Jul', 'Julho')
-        .replace('Ago', 'Agosto')
-        .replace('Set', 'Setembro')
-        .replace('Out', 'Outubro')
-        .replace('Nov', 'Novembro')
-        .replace('Dez', 'Dezembro');
+        .replace(/Marco/i, 'Março')
+        .replace(/Fev/i, 'Fevereiro')
+        .replace(/Jan/i, 'Janeiro')
+        .replace(/Abr/i, 'Abril')
+        .replace(/Mai/i, 'Maio')
+        .replace(/Jun/i, 'Junho')
+        .replace(/Jul/i, 'Julho')
+        .replace(/Ago/i, 'Agosto')
+        .replace(/Set/i, 'Setembro')
+        .replace(/Out/i, 'Outubro')
+        .replace(/Nov/i, 'Novembro')
+        .replace(/Dez/i, 'Dezembro');
     };
     
     // Ordenar meses cronologicamente
@@ -105,6 +115,8 @@ export async function parseCloudCostCsv(csvContent: string): Promise<CloudCostDa
       
       return (monthMap[monthA] || 0) - (monthMap[monthB] || 0);
     });
+    
+    console.log(`Meses ordenados: ${monthColumns.join(', ')}`);
     
     // Processar linhas de dados
     const services: ServiceCost[] = [];
@@ -209,6 +221,9 @@ export async function parseCloudCostCsv(csvContent: string): Promise<CloudCostDa
       }
     }
     
+    console.log(`Serviços encontrados: ${services.length}`);
+    console.log(`Meses com totais: ${Object.keys(totalsByMonth).length}`);
+    
     // Verificar se temos dados válidos
     if (services.length === 0) {
       throw new Error('Nenhum serviço encontrado no arquivo CSV');
@@ -218,11 +233,34 @@ export async function parseCloudCostCsv(csvContent: string): Promise<CloudCostDa
       throw new Error('Nenhum custo encontrado no arquivo CSV');
     }
     
-    return {
+    // Garantir que todos os serviços tenham custos para todos os meses
+    services.forEach(service => {
+      monthColumns.forEach(month => {
+        if (!service.costs[month]) {
+          service.costs[month] = 0;
+        }
+        
+        // Garantir que subserviços também tenham custos para todos os meses
+        if (service.subServices) {
+          service.subServices.forEach(subService => {
+            if (!subService.costs[month]) {
+              subService.costs[month] = 0;
+            }
+          });
+        }
+      });
+    });
+    
+    const result: CloudCostData = {
       services,
       months: monthColumns,
       totalsByMonth
     };
+    
+    console.log("Processamento do CSV concluído com sucesso");
+    console.log(`Resultado: ${services.length} serviços, ${monthColumns.length} meses`);
+    
+    return result;
   } catch (error) {
     console.error('Erro ao processar arquivo CSV:', error);
     throw new Error(`Erro ao processar arquivo CSV: ${error instanceof Error ? error.message : 'Formato inválido'}`);
