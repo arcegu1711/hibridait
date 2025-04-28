@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { parseCSV } from '@/lib/csv/parser';
+import { parseCloudCostCsv } from '@/lib/csv/parser';
 import fs from 'fs';
 import path from 'path';
 import { v4 as uuidv4 } from 'uuid';
@@ -57,7 +57,7 @@ export async function POST(request: NextRequest) {
 
     try {
       // Processar o CSV
-      const parsedData = parseCSV(fileContent);
+      const parsedData = await parseCloudCostCsv(fileContent);
       
       // Verificar se os dados foram processados corretamente
       if (!parsedData || !parsedData.services || parsedData.services.length === 0) {
